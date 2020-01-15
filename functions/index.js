@@ -1,11 +1,6 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-// // Create and Deploy Your First Cloud Functions
-// // https://firebase.google.com/docs/functions/write-firebase-functions
-//
-// exports.helloWorld = functions.https.onRequest((request, response) => {
-//  response.send("Hello from Firebase!");
-// });
+
 admin.initializeApp();
 
 exports.createPublicProfile = functions.https.onCall(async (data, context) => {
@@ -25,6 +20,12 @@ exports.createPublicProfile = functions.https.onCall(async (data, context) => {
     if (publicProfile.exists) {
         throw new functions.https.HttpsError('already-exists', 'This username already belongs to an existing user.')
     }
+
+    const currentUser = await admin.auth().getUser(context.auth.uid);
+    if (currentUser.email === functions.config().accounts.admin) {
+        await admin.auth().setCustomUserClaims(context.auth.uid, { admin: true });
+    }
+
 
     return admin.firestore().collection('publicProfiles').doc(data.user).set({
         userId: context.auth.uid
