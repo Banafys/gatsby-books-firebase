@@ -1,7 +1,49 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const mimeTypes = require('mimetypes');
 
 admin.initializeApp();
+
+exports.createBook = functions.https.onCall(async (data, context) => {
+    checkAuthentication(context, true);
+    dataValidator(data, {
+        bookName: 'string',
+        bookCover: 'string',
+        authorId: 'string',
+        summary: 'string'
+    })
+    const mimeType = data.bookCover.match(/data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+).*,.*/)[1];
+    const base64EncodedImageString = data.bookCover.replace(/^data:image\/\w+;base64,/, '');
+    const imageBuffer = new Buffer(base64EncodedImageString, 'base64');
+
+    const filename = `bookCovers/${data.bookName}.${mimeTypes.detectExtension(mimeType)}`;
+    const file = admin.storage().bucket().file(filename);
+    await file.save(imageBuffer, { contentType: 'image/jpeg' });
+    const fileUrl = await file.getSignedUrl({ action: 'read', expires: '03-09-2491' }).then(urls => urls[0]);
+
+    return admin.firestore().collection('books').add({
+        title: data.bookName,
+        imageUrl: fileUrl,
+        author: admin.firestore().collection('authors').doc(data.authorId),
+        summary: data.summary
+    });
+});
+
+exports.createAuthor = functions.https.onCall(async (data, context) => {
+    checkAuthentication(context, true);
+    dataValidator(data, { authorName: 'string' })
+
+    const author = await admin.firestore().collection('authors')
+        .where('name', '==', data.authorName)
+        .limit(1)
+        .get();
+
+    if (!author.empty) {
+        throw new functions.https.HttpsError('already-exists', 'This author already exists.')
+    }
+
+    return admin.firestore().collection('authors').add({ name: data.authorName });
+});
 
 exports.createPublicProfile = functions.https.onCall(async (data, context) => {
     checkAuthentication(context);
@@ -57,9 +99,11 @@ exports.postComment = functions.https.onCall((data, context) => {
         });
 });
 
-function checkAuthentication(context) {
+function checkAuthentication(context, admin) {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to use this feature.')
+    } else if (!context.auth.token.admin && admin) {
+        throw new functions.https.HttpsError('permission-denied', 'You must be an admin to use this feature.')
     }
 }
 
