@@ -26,7 +26,7 @@ exports.createBook = functions.https.onCall(async (data, context) => {
         imageUrl: fileUrl,
         author: admin.firestore().collection('authors').doc(data.authorId),
         summary: data.summary
-    });
+    }); // add a then function which contains a call to Netlify to trigger a build every time a book is added. See Section 13: 63
 });
 
 exports.createAuthor = functions.https.onCall(async (data, context) => {
